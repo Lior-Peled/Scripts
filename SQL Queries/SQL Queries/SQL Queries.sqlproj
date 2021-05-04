@@ -63,4 +63,7 @@
   <ItemGroup>
     <None Include="SPWHO_Advanced.sql" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Table Sizes.sql" />
+  </ItemGroup>
 </Project>
