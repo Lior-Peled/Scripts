@@ -1,0 +1,15 @@
+1) Add ADF as contributer to AAS
+
+2) Add Web Activity
+In your ADF pipeline you need to add a Web Activity to call the Rest API of Analysis Services. First step is to determine the Rest API URL. Replace in the string below, the <xxx> values with the subscription id, resource group and servername of your Analysis Services. The Rest API method we will be using is 'Suspend' but you can replace that word by 'Resume' to startup the AAS:
+https://management.azure.com/subscriptions/<xxx>/resourceGroups/<xxx>/providers/Microsoft.AnalysisServices/servers/<xxx>/Suspend?api-version=2017-08-01
+
+Example:
+https://management.azure.com/subscriptions/a74a173e-4d8a-48d9-9ab7-a0b85abb98fb/resourceGroups/bitools/providers/Microsoft.AnalysisServices/servers/bitools2/Suspend?api-version=2017-08-01
+
+Second step is to create a JSON message for the Rest API. Well the Rest API doesn't use it, but it is required in the Web activity when you use POST as method. So you just need to create a dummy json message:
+1
+2
+3	{
+    "Dummy": "Dummy"
+}
