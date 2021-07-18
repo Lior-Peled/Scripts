@@ -1,0 +1,340 @@
+import logging
+
+import azure.functions as func
+import pandas as pd
+import requests 
+
+
+
+def main(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info('Python HTTP trigger function processed a request.')
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.sql import text
+
+    #connect to Azure SQL with SqlAlchemy
+
+    
+    server   = ''
+    database = 'BiDwProd'
+    username = 'BI@htv.co.il'
+    password = ''
+    driver   = 'ODBC Driver 17 for SQL Server'
+    Authentication='ActiveDirectoryPassword'
+
+    # params for connection
+    params = (f'DRIVER={driver};\
+                            SERVER={server};\
+                            DATABASE={database};\
+                            UID={username};\
+                            PWD={password};\
+                            AUTHENTICATION={Authentication}' )
+
+    engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+
+
+    connection= engine.connect()
+
+    ##UPDATE MNG TABLE- SET ETL STATUS TO RUNNING
+        
+    statement = text("""
+    update  [dbo].[MNG_KonimBo]
+    set [value] = 'running'
+    where [Key] = 'ETL status'""")
+        
+    connection.execute(statement)
+
+
+
+    #Check whether this is the first run or not.
+    #If not first run-  get the last update dates as variables
+
+    df = pd.read_sql_query ("SELECT [Value] FROM [dbo].[MNG_KonimBo] \
+    WHERE [Key] = 'orders first run'" ,connection )
+
+    orders_first_run = df.loc[ 0,'Value']
+
+    df = pd.read_sql_query ("SELECT [Value] FROM [dbo].[MNG_KonimBo] \
+    WHERE [Key] = 'items first run'" ,connection )
+
+    items_first_run = df.loc[ 0,'Value']
+
+    df = pd.read_sql_query ("SELECT CONVERT(VARCHAR(50) ,SWITCHOFFSET(cast([Value] as datetimeoffset),'+00:00'),127) as [Value]   FROM [dbo].[MNG_KonimBo] \
+    WHERE [Key] = 'Orders last update date'" ,connection )
+
+    orders_last_update = df.loc[ 0,'Value']
+
+    df = pd.read_sql_query ("SELECT CONVERT(VARCHAR(50) ,SWITCHOFFSET(cast([Value] as datetimeoffset),'+00:00'),127) as [Value]   FROM [dbo].[MNG_KonimBo] \
+    WHERE [Key] = 'Items last update date'" ,connection )
+
+    items_last_update = df.loc[ 0,'Value']
+
+    
+    #CHECK IS FIRST RUN OR NOT
+
+    if orders_first_run =="Y":
+        orders_url = "https://api.konimbo.co.il/v1/orders?token="
+    else:
+        orders_url = f"https://api.konimbo.co.il/v1/orders?token=&updated_at_min={orders_last_update}"
+
+
+    results_orders    = []
+    results_orderlines = []
+
+    logging.info('Start loop over Orders API.')
+
+    page=1
+    max_pages=10000
+
+    while page <=max_pages:
+        page_str = str(page)
+        orders_url_with_page = orders_url+f'&page={page_str}'
+
+        # send API request and insert into json variable
+        logging.info(f'getting data from page= {page} ')
+        logging.info(orders_url_with_page)
+            
+    #make the API call 
+        r = requests.get(orders_url_with_page)
+        r_json = r.json()
+        
+    # if  result succeded, then we got rows back
+        if r.status_code ==200:
+            
+            #create a normalized dataframe from the results, and append to a list of dataframes
+            results_orders.append( pd.json_normalize(r_json) ) 
+            
+            ### create list of dataframes of order line with Line items expanded on rows + orderid+ customer_id fields 
+            results_orderlines.append( pd.json_normalize(
+                                        r_json,
+                                        record_path=['items'],
+                                        meta=[ 'id' , 'customer_id' ],
+                                            errors='ignore')   ) 
+
+            
+            #turn the results into df to get the max dates
+            df= pd.DataFrame(r_json)
+    #        df_updated=  df[ 'updated_at']
+            df_created=  df[ 'created_at']
+        
+            #set new values for the min dates to fetch based on the last max value returned in previous run
+    #        min_updated_date=   df_updated.max()
+            min_created_date=   df_created.max()
+            
+            logging.info(f'status code is {r.status_code}, continuing loop..')
+            #check if last result succeded or not
+            page +=1
+    # if last result failed meaning there are no rows
+        else:
+            page= max_pages+1
+            logging.info(f'status code is {r.status_code}, no more pages to fetch, stopping loop..')
+            
+    
+    if len(results_orders)>0:       #if we got back any results---> insert to sql
+
+        # results_orders is a list of dataframes ,  append all the dataframes to one dataframe
+        
+        df_orders = pd.concat(results_orders, ignore_index=True)
+        
+        # results_orderlines is a list of dataframes ,  append all the dataframes to one dataframe
+        df_orderlines = pd.concat(results_orderlines, ignore_index=True)
+        
+                
+        # remove uneccesary columns from orders
+
+        # get column list
+        #orders_df.columns
+        
+        #iterate over the current columns list and delete unecesary columns per variable below
+        columns_to_delete= ['proposal','referer_url', 'request_url','credit_card_details','credit_guard_response_xml_string','statuses','items', 'upgrades','discounts' ,'external_shipping_hash']
+        
+        #if the column list contains the columns above, delete that column
+        for column in columns_to_delete:
+            for columndf in df_orders.columns:
+                if columndf.__contains__(column):
+                    del df_orders[columndf]
+        
+        
+        # remove uneccesary columns from OrderLines
+        if 'options' in df_orderlines.columns:
+            del df_orderlines['options']
+        else:
+            pass
+        
+        
+        #connect to Azure SQL with SqlAlchemy
+
+
+        from sqlalchemy import create_engine
+        
+        server   = ''
+        database = 'BiDwProd'
+        username = 'BI@htv.co.il'
+        password = ''
+        driver   = 'ODBC Driver 17 for SQL Server'
+        Authentication='ActiveDirectoryPassword'
+        
+        # params for connection
+        params = (f'DRIVER={driver};\
+                                SERVER={server};\
+                                DATABASE={database};\
+                                UID={username};\
+                                PWD={password};\
+                                AUTHENTICATION={Authentication}' )
+        
+        engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+        
+
+        # insert orders to sql table with truncate , chuncksize is the number of bulk rows, method specifies that multi batch is allowed
+        logging.info('Start Insert into MRR_Konimbo_Orders table')
+        df_orders.to_sql('MRR_Konimbo_Orders', engine, if_exists='replace',chunksize=10, method='multi')
+        logging.info('Finish Insert into MRR_Konimbo_Orders table')
+      
+        # insert order lines to sql table with truncate , chuncksize is the number of bulk rows, method specifies that multi batch is allowed
+        logging.info('Start Insert into MRR_Konimbo_OrderLines table')
+        df_orderlines.to_sql('MRR_Konimbo_Orderlines', engine, if_exists='replace',chunksize=100, method='multi')
+        logging.info('Finish Insert into MRR_Konimbo_OrderLines table')
+        
+        
+    else:
+        pass
+            
+
+
+
+    ###ITEMS START##
+    logging.info(f'STARTING ITEMS API CALL..')
+    
+    if items_first_run =="Y":
+        items_url = "https://api.konimbo.co.il/v1/items?token="
+    else:
+        items_url = f"https://api.konimbo.co.il/v1/items?token=&updated_at_min={items_last_update}"
+
+    
+        
+    results_items = []
+
+
+    page=1
+    max_pages=10000
+
+    while page <=max_pages:
+        page_str = str(page)
+        items_url_with_page = items_url+f'&page={page_str}'
+
+        # send API request and insert into json variable
+        logging.info(f'getting data from page= {page} ')
+        logging.info(items_url_with_page)
+     
+        
+    #make the API call 
+        r = requests.get(items_url_with_page)
+        r_json = r.json()
+        
+    # if  result succeded, then we got rows back
+        if r.status_code ==200:
+            
+             #create a normalized dataframe from the results, and append the to a list of dataframes
+             results_items.append( pd.json_normalize(r_json) ) 
+
+             logging.info(f'status code is {r.status_code}, continuing loop..')
+            #check if last result succeded or not
+             page +=1
+    # if last result failed meaning there are no rows
+        else:
+             page= max_pages+1
+             logging.info(f'status code is {r.status_code}, no more pages to fetch, stopping loop..')
+                
+    
+    
+    if len(results_items)>0:      ##if we got back anything
+        # results_items is a list of dataframes ,  append all the dataframes to one dataframe
+        df_items = pd.concat(results_items, ignore_index=True)
+
+        
+        #remove some columns
+        items_columns_to_drop =['html','store_category_title_with_parent.child_title','set_icons','related_items','images','spec','filters','related_tags','secondary_category_titles']
+                                    
+        #if the column list contains the columns above, delete that column
+        for column in items_columns_to_drop:
+            for columndf in df_items.columns:
+                if columndf.__contains__(column):
+                    del df_items[columndf]
+                    
+        #rename a column
+        df_items.rename(columns = {'store_category_title_with_parent.parent_title':'store_category_title_with_parent'}, inplace = True)
+        
+                
+        #connect to Azure SQL with SqlAlchemy
+
+        from sqlalchemy import create_engine
+        
+        server   = ''
+        database = 'BiDwProd'
+        username = 'BI@htv.co.il'
+        password = ''
+        driver   = 'ODBC Driver 17 for SQL Server'
+        Authentication='ActiveDirectoryPassword'
+        
+        # params for connection
+        params = (f'DRIVER={driver};\
+                                SERVER={server};\
+                                DATABASE={database};\
+                                UID={username};\
+                                PWD={password};\
+                                AUTHENTICATION={Authentication}' )
+        
+        engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+        
+        
+        # insert order lines to sql table with truncate , chuncksize is the number of bulk rows, method specifies that multi batch is allowed
+        logging.info('Start Insert into MRR_Konimbo_Items table')
+        df_items.to_sql('MRR_Konimbo_Items', engine, if_exists='replace',chunksize=10, method='multi')
+        logging.info('Finish Insert into MRR_Konimbo_Items table')
+
+        ##UPDATE MNG TABLE- SET ETL STATUS TO NOT RUNNING
+        
+        statement = text("""
+        update  [dbo].[MNG_KonimBo]
+        set [value] = 'not running'
+        where [Key] = 'ETL status'""")
+            
+        connection.execute(statement)
+        connection.close()
+      
+
+    else:   #IF THERE ARE NO RESULTS, DO NOTHING
+        ##UPDATE MNG TABLE- SET ETL STATUS TO NOT RUNNING
+        
+        statement = text("""
+        update  [dbo].[MNG_KonimBo]
+        set [value] = 'not running'
+        where [Key] = 'ETL status'""")
+            
+        connection.execute(statement)
+        connection.close()
+
+            
+
+    return func.HttpResponse(
+            'Completed Orders, Orderlines and Items API calls Succecsfully.The HTTP triggered function executed successfully.',
+                status_code=200
+        )
+
+
+        # name = req.params.get('name')
+        # if not name:
+        #     try:
+        #         req_body = req.get_json()
+        #     except ValueError:
+        #         pass
+        #     else:
+        #         name = req_body.get('name')
+
+        # if name:
+        #     return func.HttpResponse(f"Hello, {name}. This HTTP triggered function executed successfully.")
+        # else:
+        #     return func.HttpResponse(
+        #          "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response.",
+        #          status_code=200
+        #     )
