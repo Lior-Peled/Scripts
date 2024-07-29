@@ -1,0 +1,89 @@
+{ "connection" :
+ {
+ "APIUrl":  "https://priority.**********/odata/Priority/tabula.ini/*******/",
+  "APIUser": "API",
+  "APIPassword": "",
+  "SQLServerConnectionString": ""
+  }
+, "companies" :
+[
+  {"company_num" : 1,
+  "company_name" : "a241111"}
+]
+, "config"  :
+[{"Screen": "DOCUMENTS_Q",
+"CopyMethod": "Full",
+"SubForm": "expand=TRANSORDER_Q_SUBFORM,TRANSORDER_QW_SUBFORM",
+"Filter": null,
+"HistoryFilter": null,
+"Increment": "null",
+"Days_Offset": 0,
+"Days_Offset_Weekly": 0,
+"table_name": "DOCUMENTS_Q",
+"use_pagination": "n",
+"mapping": null,
+"page_size" : 500,
+"ApiUrls":   "https://priority.**********/odata/Priority/tabula.ini/a241111/"
+      },
+	  
+{"Screen": "DOCUMENTS_p",
+"CopyMethod": "Full",
+"SubForm": "expand=PROJPROFIT_SUBFORM,PQCUSTINVOICES_SUBFORM,PQCALLS_SUBFORM",
+"Filter": "filter=((UDATE ge tokenstart%2B02:00) and (UDATE le tokenend%2B02:00))",
+"HistoryFilter": "filter=((UDATE ge tokenstart%2B02:00) and (UDATE le tokenend%2B02:00))",
+"Increment": "y",
+"Days_Offset": -1.0,
+"Days_Offset_Weekly": -7.0,
+"table_name": "DOCUMENTS_p",
+"use_pagination": "n",
+"mapping": null,
+"page_size" : 500,
+"ApiUrls":   "https://priority.**********/odata/Priority/tabula.ini/a241111/"
+      },
+	  
+{"Screen": "SERNUMBERS",
+"CopyMethod": "Full",
+"SubForm": null,
+"Filter": null,
+"HistoryFilter": null,
+"Increment": null,
+"Days_Offset": 0,
+"Days_Offset_Weekly": 0,
+"table_name": "SERNUMBERS",
+"use_pagination": "n",
+"mapping": null,
+"page_size" : 500,
+"ApiUrls":   "https://priority.**********/odata/Priority/tabula.ini/a241111/"
+      },
+	  
+{"Screen": "CUSTOMERS",
+"CopyMethod": "Full",
+"SubForm": null,
+"Filter": null,
+"HistoryFilter": null,
+"Increment": null,
+"Days_Offset": 0,
+"Days_Offset_Weekly": 0,
+"table_name": "CUSTOMERS",
+"use_pagination": "n",
+"mapping": null,
+"page_size" : 500,
+"ApiUrls":   "https://priority.**********/odata/Priority/tabula.ini/a241111/"
+      },
+	  
+{"Screen": "FNCCUST",
+"CopyMethod": "Full",
+"SubForm": "expand=CUSTOBLIGO_SUBFORM,OBLIGO_FNCITEMS_SUBFORM",
+"Filter": null,
+"HistoryFilter": null,
+"Increment": null,
+"Days_Offset": 0,
+"Days_Offset_Weekly": 0,
+"table_name": "FNCCUST",
+"use_pagination": "n",
+"mapping": null,
+"page_size" : 500,
+"ApiUrls":   "https://priority.**********/odata/Priority/tabula.ini/a241111/"
+      },
+]
+}
